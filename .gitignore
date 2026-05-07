@@ -1,0 +1,7 @@
+PROJECT.md
+data/
+samples/
+__pycache__/
+*.pyc
+.env
+.venv
