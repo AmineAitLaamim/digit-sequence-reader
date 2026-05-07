@@ -96,7 +96,6 @@ def get_digit_aug_pipeline(augment=True, config=None):
             p=0.5
         ),
         A.GaussNoise(
-            var_limit=(10.0, 50.0),
             p=0.4
         ),
         A.MotionBlur(
@@ -107,7 +106,6 @@ def get_digit_aug_pipeline(augment=True, config=None):
             num_holes_range=(1, 8),
             hole_height_range=(1, 8),
             hole_width_range=(1, 8),
-            fill_value=0,
             p=erasing_p
         ),
         A.Resize(64, 64),
