@@ -95,8 +95,8 @@ def get_digit_aug_pipeline(augment=True, config=None):
             contrast_limit=contrast,
             p=0.5
         ),
-        A.GaussianNoise(
-            std_range=(10.0, 50.0),
+        A.GaussNoise(
+            var_limit=(10.0, 50.0),
             p=0.4
         ),
         A.MotionBlur(
