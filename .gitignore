@@ -1,6 +1,7 @@
 PROJECT.md
 data/
 samples/
+model/
 __pycache__/
 *.pyc
 .env
