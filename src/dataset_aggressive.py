@@ -71,6 +71,17 @@ def get_digit_aug_pipeline(augment=True, config=None):
     brightness = config.get('aug_brightness', 0.3)
     contrast = config.get('aug_contrast', 0.3)
 
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        if hasattr(A, 'GaussianNoise'):
+            noise = A.GaussianNoise(std_range=(10.0, 50.0), p=0.4)
+        else:
+            try:
+                noise = A.GaussNoise(var_limit=(100.0, 2500.0), p=0.4)
+            except Exception:
+                noise = A.GaussNoise(p=0.4)
+
     transform = A.Compose([
         # --- spatial transforms ---
         A.Affine(
@@ -95,7 +106,7 @@ def get_digit_aug_pipeline(augment=True, config=None):
             contrast_limit=contrast,
             p=0.5
         ),
-        A.GaussianNoise(std_range=(10.0, 50.0), p=0.4),
+        noise,
         A.MotionBlur(
             blur_limit=7,
             p=0.3
