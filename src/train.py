@@ -142,17 +142,11 @@ def main():
     print(f"Using device: {device}")
     
     if config.get('use_aggressive_data', False):
-        from dataset_aggressive import build_multidigit_bank, get_digit_aug_pipeline, InfiniteSequenceDataset, collate_fn as agg_collate_fn
-        from dataset import get_dataloaders
+        from dataset_aggressive import get_dataloaders, InfiniteSequenceDataset, collate_fn as agg_collate_fn
         from torch.utils.data import DataLoader
         
-        digit_bank = build_multidigit_bank(data_path=config['data_path'])
-        aug_pipeline = get_digit_aug_pipeline(augment=True, config=config)
-        train_ds = InfiniteSequenceDataset(digit_bank, aug_pipeline, config)
-        train_loader = DataLoader(train_ds, batch_size=config['batch_size'], collate_fn=agg_collate_fn, num_workers=2, pin_memory=True)
-        
-        _, val_loader, test_loader = get_dataloaders(data_path=config['data_path'])
-        steps_per_epoch = config.get('train_size_per_epoch', 500_000) // config['batch_size']
+        multidigit_bank, val_loader, test_loader = get_dataloaders(data_path=config['data_path'])
+        steps_per_epoch = config.get('train_size_per_epoch', 100_000) // config['batch_size']
     else:
         from dataset import get_dataloaders
         train_loader, val_loader, test_loader = get_dataloaders(data_path=config['data_path'])
@@ -166,6 +160,7 @@ def main():
     start_epoch = 1
     best_val_loss = float('inf')
     
+    # resume always points to best_model.pt
     if args.resume and os.path.exists(args.resume):
         ckpt = torch.load(args.resume, map_location=device)
         model.load_state_dict(ckpt['model_state_dict'])
@@ -178,6 +173,12 @@ def main():
     
     for epoch in range(start_epoch, config['epochs'] + 1):
         print(f"\nEpoch {epoch}/{config['epochs']}")
+        
+        if config.get('use_aggressive_data', False):
+            # Recreate train_loader each epoch to update the augmentation intensity curriculum
+            train_ds = InfiniteSequenceDataset(multidigit_bank, config, size=config['train_size_per_epoch'], augment=True, epoch=epoch)
+            train_loader = DataLoader(train_ds, batch_size=config['batch_size'], collate_fn=agg_collate_fn, num_workers=2, pin_memory=True)
+            
         train_loss, train_seq, train_char = train_epoch(model, train_loader, optimizer, criterion, device, steps_per_epoch)
         val_loss, val_seq, val_char = val_epoch(model, val_loader, criterion, device)
         
