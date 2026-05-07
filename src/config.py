@@ -9,7 +9,7 @@ config = {
 
     # Data sources
     'datasets': ['emnist_digits', 'qmnist', 'usps'],
-    'train_size_per_epoch': 500_000,
+    'train_size_per_epoch': 100_000,
     'use_aggressive_data': True,
 
     # Augmentation
@@ -19,7 +19,7 @@ config = {
     'aug_translate': (0.2, 0.2),
     'aug_perspective': 0.1,
     'aug_erasing_p': 0.3,
-    'aug_elastic': True,
+    'aug_elastic': False,
     'aug_brightness': 0.3,
     'aug_contrast': 0.3,
 
