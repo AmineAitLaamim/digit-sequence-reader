@@ -1,0 +1,152 @@
+import os
+import random
+import torch
+import numpy as np
+from PIL import Image
+from torch.utils.data import IterableDataset
+import torchvision.datasets as datasets
+import torchvision.transforms as transforms
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
+
+from config import config
+
+def build_multidigit_bank(data_path='./data'):
+    os.makedirs(data_path, exist_ok=True)
+    bank = {i: [] for i in range(10)}
+    
+    # EMNIST Digits
+    print("Loading EMNIST Digits...")
+    emnist = datasets.EMNIST(root=data_path, split='digits', train=True, download=True)
+    for img, label in emnist:
+        bank[label].append(img)
+        
+    # QMNIST
+    print("Loading QMNIST...")
+    qmnist = datasets.QMNIST(root=data_path, what='train', compat=True, download=True)
+    for img, label in qmnist:
+        if isinstance(img, np.ndarray):
+            img = Image.fromarray(img)
+        elif isinstance(img, torch.Tensor):
+            img = transforms.ToPILImage()(img)
+        bank[label].append(img)
+        
+    # USPS
+    print("Loading USPS...")
+    usps = datasets.USPS(root=data_path, train=True, download=True)
+    for img, label in usps:
+        if isinstance(img, np.ndarray):
+            img = Image.fromarray(img)
+        elif isinstance(img, torch.Tensor):
+            img = transforms.ToPILImage()(img)
+        img = img.resize((28, 28), Image.BILINEAR)
+        bank[label].append(img)
+        
+    for i in range(10):
+        print(f"Digit {i}: {len(bank[i])} images")
+        
+    return bank
+
+def get_digit_aug_pipeline(augment=True, config=config):
+    if not augment:
+        transform = A.Compose([
+            A.Resize(64, 64),
+            ToTensorV2()
+        ])
+        return lambda pil_img: transform(image=np.array(pil_img).astype(np.float32) / 255.0)['image']
+        
+    elastic_p = 0.7 if config.get('aug_elastic', False) else 0.0
+    
+    transform = A.Compose([
+        A.Affine(
+            scale=config.get('aug_scale', (0.8, 1.2)),
+            translate_percent=config.get('aug_translate', (0.1, 0.1)),
+            rotate=(-config.get('aug_rotation', 10), config.get('aug_rotation', 10)),
+            shear=(-config.get('aug_shear', 5), config.get('aug_shear', 5)),
+            p=1.0
+        ),
+        A.Perspective(scale=config.get('aug_perspective', 0.1), p=0.5),
+        A.ElasticTransform(alpha=34, sigma=4, alpha_affine=4, p=elastic_p),
+        A.RandomBrightnessContrast(
+            brightness_limit=config.get('aug_brightness', 0.2),
+            contrast_limit=config.get('aug_contrast', 0.2),
+            p=0.5
+        ),
+        A.GaussNoise(var_limit=(10.0, 50.0), p=0.4),
+        A.MotionBlur(blur_limit=7, p=0.3),
+        A.CoarseDropout(max_holes=8, max_height=8, max_width=8, p=config.get('aug_erasing_p', 0.1)),
+        A.Resize(64, 64),
+        A.Normalize(mean=0, std=1),
+        ToTensorV2()
+    ])
+    
+    return lambda pil_img: transform(image=np.array(pil_img))['image']
+
+def make_sequence(digit_bank, aug_pipeline, config):
+    L = random.randint(config['min_seq_len'], config['max_seq_len'])
+    digits = [random.randint(0, 9) for _ in range(L)]
+    
+    sequence_parts = []
+    for i, digit in enumerate(digits):
+        img_pil = random.choice(digit_bank[digit])
+        img_tensor = aug_pipeline(img_pil)  # [1, 64, 64]
+        
+        if i > 0:
+            if random.random() < config.get('overlap_prob', 0.0):
+                gap = -random.randint(1, config.get('overlap_max', 0))
+            else:
+                gap = random.randint(config.get('gap_min', 0), config.get('gap_max', 0))
+                
+            if gap >= 0:
+                spacer = torch.zeros(1, 64, gap)
+                sequence_parts.append(spacer)
+            elif gap < 0:
+                # trim the right side of the last item in sequence_parts
+                if sequence_parts:
+                    sequence_parts[-1] = sequence_parts[-1][:, :, :-abs(gap)]
+                    
+        sequence_parts.append(img_tensor)
+        
+    seq_img = torch.cat(sequence_parts, dim=2)  # [1, 64, W]
+    
+    label = [config['SOS_IDX']] + digits + [config['EOS_IDX']]
+    label_tensor = torch.tensor(label, dtype=torch.long)
+    
+    return seq_img, label_tensor
+
+class InfiniteSequenceDataset(IterableDataset):
+    def __init__(self, digit_bank, aug_pipeline, config):
+        super().__init__()
+        self.digit_bank = digit_bank
+        self.aug_pipeline = aug_pipeline
+        self.config = config
+        
+    def __iter__(self):
+        worker_info = torch.utils.data.get_worker_info()
+        if worker_info is not None:
+            np.random.seed(np.random.get_state()[1][0] + worker_info.id)
+            random.seed(random.getstate()[1][0] + worker_info.id)
+            
+        while True:
+            yield make_sequence(self.digit_bank, self.aug_pipeline, self.config)
+
+def collate_fn(batch):
+    images, labels = zip(*batch)
+    
+    lengths = torch.tensor([len(lbl) for lbl in labels], dtype=torch.long)
+    max_len = lengths.max().item()
+    
+    max_w = max([img.size(2) for img in images])
+    
+    B = len(batch)
+    padded_images = torch.zeros(B, 1, 64, max_w)
+    padded_labels = torch.full((B, max_len), config['PAD_IDX'], dtype=torch.long)
+    
+    for i in range(B):
+        w = images[i].size(2)
+        padded_images[i, :, :, :w] = images[i]
+        
+        l = len(labels[i])
+        padded_labels[i, :l] = labels[i]
+        
+    return padded_images, padded_labels, lengths

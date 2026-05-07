@@ -10,7 +10,6 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
 
 from config import config
-from dataset import get_dataloaders
 from model import Seq2Seq
 
 def compute_accuracy(logits, targets, lengths):
@@ -37,13 +36,17 @@ def compute_accuracy(logits, targets, lengths):
         
     return seq_acc_count / B, char_correct / max(1, char_total)
 
-def train_epoch(model, dataloader, optimizer, criterion, device):
+def train_epoch(model, dataloader, optimizer, criterion, device, steps_per_epoch):
     model.train()
     total_loss = 0
     total_seq_acc = 0
     total_char_acc = 0
     
-    for images, targets, lengths in tqdm(dataloader, desc="Training", leave=False):
+    pbar = tqdm(enumerate(dataloader), total=steps_per_epoch, desc="Training", leave=False)
+    for i, (images, targets, lengths) in pbar:
+        if i >= steps_per_epoch:
+            break
+        
         images, targets = images.to(device), targets.to(device)
         
         optimizer.zero_grad()
@@ -69,8 +72,7 @@ def train_epoch(model, dataloader, optimizer, criterion, device):
         total_seq_acc += seq_acc
         total_char_acc += char_acc
         
-    n = len(dataloader)
-    return total_loss / n, total_seq_acc / n, total_char_acc / n
+    return total_loss / steps_per_epoch, total_seq_acc / steps_per_epoch, total_char_acc / steps_per_epoch
 
 def val_epoch(model, dataloader, criterion, device):
     model.eval()
@@ -139,7 +141,22 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
     
-    train_loader, val_loader, test_loader = get_dataloaders()
+    if config.get('use_aggressive_data', False):
+        from dataset_aggressive import build_multidigit_bank, get_digit_aug_pipeline, InfiniteSequenceDataset, collate_fn as agg_collate_fn
+        from dataset import get_dataloaders
+        from torch.utils.data import DataLoader
+        
+        digit_bank = build_multidigit_bank(data_path=config['data_path'])
+        aug_pipeline = get_digit_aug_pipeline(augment=True, config=config)
+        train_ds = InfiniteSequenceDataset(digit_bank, aug_pipeline, config)
+        train_loader = DataLoader(train_ds, batch_size=config['batch_size'], collate_fn=agg_collate_fn, num_workers=2, pin_memory=True)
+        
+        _, val_loader, test_loader = get_dataloaders(data_path=config['data_path'])
+        steps_per_epoch = config.get('train_size_per_epoch', 500_000) // config['batch_size']
+    else:
+        from dataset import get_dataloaders
+        train_loader, val_loader, test_loader = get_dataloaders(data_path=config['data_path'])
+        steps_per_epoch = len(train_loader)
     
     model = Seq2Seq().to(device)
     optimizer = Adam(model.parameters(), lr=config['lr'])
@@ -161,7 +178,7 @@ def main():
     
     for epoch in range(start_epoch, config['epochs'] + 1):
         print(f"\nEpoch {epoch}/{config['epochs']}")
-        train_loss, train_seq, train_char = train_epoch(model, train_loader, optimizer, criterion, device)
+        train_loss, train_seq, train_char = train_epoch(model, train_loader, optimizer, criterion, device, steps_per_epoch)
         val_loss, val_seq, val_char = val_epoch(model, val_loader, criterion, device)
         
         current_lr = optimizer.param_groups[0]['lr']
