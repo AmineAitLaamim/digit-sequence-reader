@@ -194,6 +194,11 @@ class InfiniteSequenceDataset(IterableDataset):
         self.epoch = epoch
         self.aug_pipeline = get_digit_aug_pipeline(augment=self.augment, config=self.config, epoch=self.epoch)
         
+    def __len__(self):
+        if self.size is None:
+            raise TypeError("Dataset has no fixed size.")
+        return self.size
+        
     def __iter__(self):
         worker_info = torch.utils.data.get_worker_info()
         worker_size = self.size
