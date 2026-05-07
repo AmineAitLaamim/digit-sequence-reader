@@ -47,40 +47,79 @@ def build_multidigit_bank(data_path='./data'):
         
     return bank
 
-def get_digit_aug_pipeline(augment=True, config=config):
+def get_digit_aug_pipeline(augment=True, config=None):
+    if config is None:
+        from config import config
+    import albumentations as A
+    from albumentations.pytorch import ToTensorV2
+
     if not augment:
-        transform = A.Compose([
-            A.Resize(64, 64),
-            ToTensorV2()
+        # Clean pipeline for validation/test
+        return transforms.Compose([
+            transforms.Resize((64, 64)),
+            transforms.ToTensor(),
         ])
-        return lambda pil_img: transform(image=np.array(pil_img).astype(np.float32) / 255.0)['image']
-        
-    elastic_p = 0.7 if config.get('aug_elastic', False) else 0.0
-    
+
+    # Load parameters from config with defaults
+    rotation = config.get('aug_rotation', 25)
+    shear = config.get('aug_shear', 15)
+    scale = config.get('aug_scale', (0.6, 1.3))
+    translate = config.get('aug_translate', (0.2, 0.2))
+    perspective = config.get('aug_perspective', 0.1)
+    erasing_p = config.get('aug_erasing_p', 0.3)
+    elastic_p = 0.7 if config.get('aug_elastic', True) else 0.0
+    brightness = config.get('aug_brightness', 0.3)
+    contrast = config.get('aug_contrast', 0.3)
+
     transform = A.Compose([
+        # --- spatial transforms ---
         A.Affine(
-            scale=config.get('aug_scale', (0.8, 1.2)),
-            translate_percent=config.get('aug_translate', (0.1, 0.1)),
-            rotate=(-config.get('aug_rotation', 10), config.get('aug_rotation', 10)),
-            shear=(-config.get('aug_shear', 5), config.get('aug_shear', 5)),
+            scale=scale,
+            translate_percent=translate,
+            rotate=(-rotation, rotation),
+            shear=(-shear, shear),
             p=1.0
         ),
-        A.Perspective(scale=config.get('aug_perspective', 0.1), p=0.5),
-        A.ElasticTransform(alpha=34, sigma=4, alpha_affine=4, p=elastic_p),
-        A.RandomBrightnessContrast(
-            brightness_limit=config.get('aug_brightness', 0.2),
-            contrast_limit=config.get('aug_contrast', 0.2),
+        A.Perspective(
+            scale=(0.0, perspective),
             p=0.5
         ),
-        A.GaussNoise(var_limit=(10.0, 50.0), p=0.4),
-        A.MotionBlur(blur_limit=7, p=0.3),
-        A.CoarseDropout(max_holes=8, max_height=8, max_width=8, p=config.get('aug_erasing_p', 0.1)),
+        A.ElasticTransform(
+            alpha=34.0,
+            sigma=4.0,
+            p=elastic_p
+        ),
+        # --- pixel‑level transforms ---
+        A.RandomBrightnessContrast(
+            brightness_limit=brightness,
+            contrast_limit=contrast,
+            p=0.5
+        ),
+        A.GaussianNoise(
+            std_range=(10.0, 50.0),
+            p=0.4
+        ),
+        A.MotionBlur(
+            blur_limit=7,
+            p=0.3
+        ),
+        A.CoarseDropout(
+            num_holes_range=(1, 8),
+            hole_height_range=(1, 8),
+            hole_width_range=(1, 8),
+            fill_value=0,
+            p=erasing_p
+        ),
         A.Resize(64, 64),
-        A.Normalize(mean=0, std=1),
-        ToTensorV2()
+        A.Normalize(mean=0.0, std=1.0),
+        ToTensorV2(),
     ])
-    
-    return lambda pil_img: transform(image=np.array(pil_img))['image']
+
+    def apply(pil_image):
+        np_img = np.array(pil_image, dtype=np.uint8)
+        return transform(image=np_img)['image']
+
+    return apply
 
 def make_sequence(digit_bank, aug_pipeline, config):
     L = random.randint(config['min_seq_len'], config['max_seq_len'])
