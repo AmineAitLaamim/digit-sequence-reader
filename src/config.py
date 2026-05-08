@@ -33,7 +33,7 @@ config = {
     # Training
     'batch_size': 64, 'epochs': 30, 'lr': 1e-3,
     'teacher_forcing_ratio': 0.5, 'clip_grad': 1.0,
-    'num_workers': 4,
+    'num_workers': 2,
     'best_metric': 'val_seq_acc',
 
     # LR Scheduler (ReduceLROnPlateau)
