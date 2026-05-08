@@ -2,9 +2,6 @@
 
 A deep learning model that reads a **variable-length sequence of handwritten digits** from a single stitched image and outputs the correct string of numbers.
 
-> **No bounding boxes. No segmentation. No OpenCV.**
-> The model learns where each digit is purely from the training signal.
-
 **Architecture:** `CNN + Bidirectional LSTM` → `Bahdanau Attention` → `LSTM Decoder`  
 **Data:** Generated on-the-fly from **EMNIST + QMNIST + USPS** (~307,000 real handwritten digits)  
 **Training:** Google Colab T4 GPU · Checkpoints auto-saved to Google Drive  
