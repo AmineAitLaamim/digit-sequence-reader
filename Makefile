@@ -2,8 +2,7 @@
 
 # Run inference locally with visualization
 infer:
-	python src/inference.py --checkpoint model/best_model.pt --image samples/test.png 
-#--visualize
+	python src/inference.py --checkpoint model/best_model.pt --image samples/sample_6_8675476.png --visualize
 
 # Generate local digit sequence samples
 generate:

@@ -8,6 +8,10 @@ import torchvision.datasets as datasets
 import torchvision.transforms as transforms
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
+import ssl
+
+# Bypass SSL verification for torchvision downloads (USPS specifically)
+ssl._create_default_https_context = ssl._create_unverified_context
 
 from config import config
 
