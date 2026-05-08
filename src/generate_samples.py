@@ -5,26 +5,28 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 import torch
 import torchvision.transforms as transforms
-from dataset import build_digit_bank, get_digit_transform, make_sequence
+from dataset_aggressive import build_multidigit_bank, get_digit_aug_pipeline, make_sequence
+from config import config
 
 def main():
-    print("Downloading MNIST and building digit bank...")
+    print("Downloading EMNIST, QMNIST, USPS and building digit bank...")
     # Using './data' relative to the execution directory
     data_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
-    digit_bank = build_digit_bank(data_path, train=True)
+    digit_bank = build_multidigit_bank(data_path)
     
-    # Using augment=True to see the actual training distributions, or False for clean digits
-    transform = get_digit_transform(augment=True)
+    # Using augment=True at max epoch to see the actual training distribution
+    epoch = config.get('epochs', 30)
+    aug_pipeline = get_digit_aug_pipeline(augment=True, config=config, epoch=epoch)
     
     out_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'samples')
     os.makedirs(out_dir, exist_ok=True)
     
-    print("Generating 10 sample images...")
-    for i in range(10):
-        img_tensor, label = make_sequence(digit_bank, transform)
+    print(f"Generating 20 sample images at curriculum epoch {epoch}...")
+    for i in range(20):
+        img_tensor, label_tensor = make_sequence(digit_bank, aug_pipeline, config, augment=True, epoch=epoch)
         
-        # label contains [SOS, d1, d2, ..., EOS]
-        digits = label[1:-1].tolist()
+        # label_tensor contains [SOS, d1, d2, ..., EOS]
+        digits = label_tensor[1:-1].tolist()
         digit_str = "".join(map(str, digits))
         
         # Convert tensor to PIL Image
