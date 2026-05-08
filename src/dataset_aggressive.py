@@ -57,8 +57,9 @@ def get_dataloaders(data_path=None):
     val_ds   = InfiniteSequenceDataset(multidigit_bank, config, size=config['val_size'], augment=False)
     test_ds  = InfiniteSequenceDataset(multidigit_bank, config, size=config['test_size'], augment=False)
     
-    val_loader  = DataLoader(val_ds, batch_size=config['batch_size'], collate_fn=collate_fn, num_workers=2, pin_memory=True)
-    test_loader = DataLoader(test_ds, batch_size=config['batch_size'], collate_fn=collate_fn, num_workers=2, pin_memory=True)
+    num_workers = config.get('num_workers', 4)
+    val_loader  = DataLoader(val_ds, batch_size=config['batch_size'], collate_fn=collate_fn, num_workers=num_workers, pin_memory=True)
+    test_loader = DataLoader(test_ds, batch_size=config['batch_size'], collate_fn=collate_fn, num_workers=num_workers, pin_memory=True)
     
     # train loader is recreated in train.py each epoch, so we only return the bank and val/test loaders
     return multidigit_bank, val_loader, test_loader

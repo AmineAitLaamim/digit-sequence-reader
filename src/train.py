@@ -103,12 +103,13 @@ def val_epoch(model, dataloader, criterion, device):
     n = len(dataloader)
     return total_loss / n, total_seq_acc / n, total_char_acc / n
 
-def save_checkpoint(model, optimizer, epoch, val_loss, path):
+def save_checkpoint(model, optimizer, epoch, val_loss, val_seq_acc, path):
     checkpoint = {
         'epoch': epoch,
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
         'val_loss': val_loss,
+        'val_seq_acc': val_seq_acc,
         'config': config
     }
     torch.save(checkpoint, path)
@@ -141,16 +142,11 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
     
-    if config.get('use_aggressive_data', False):
-        from dataset_aggressive import get_dataloaders, InfiniteSequenceDataset, collate_fn as agg_collate_fn
-        from torch.utils.data import DataLoader
-        
-        multidigit_bank, val_loader, test_loader = get_dataloaders(data_path=config['data_path'])
-        steps_per_epoch = config.get('train_size_per_epoch', 100_000) // config['batch_size']
-    else:
-        from dataset import get_dataloaders
-        train_loader, val_loader, test_loader = get_dataloaders(data_path=config['data_path'])
-        steps_per_epoch = len(train_loader)
+    from dataset_aggressive import get_dataloaders, InfiniteSequenceDataset, collate_fn as agg_collate_fn
+    from torch.utils.data import DataLoader
+    
+    multidigit_bank, val_loader, test_loader = get_dataloaders(data_path=config['data_path'])
+    steps_per_epoch = config['train_size'] // config['batch_size']
     
     model = Seq2Seq().to(device)
     optimizer = Adam(model.parameters(), lr=config['lr'])
@@ -158,7 +154,7 @@ def main():
     scheduler = ReduceLROnPlateau(optimizer, mode='min', patience=config['lr_patience'], factor=config['lr_factor'], min_lr=config['lr_min'])
     
     start_epoch = 1
-    best_val_loss = float('inf')
+    best_val_seq = 0.0
     
     # resume always points to best_model.pt
     if args.resume and os.path.exists(args.resume):
@@ -166,18 +162,17 @@ def main():
         model.load_state_dict(ckpt['model_state_dict'])
         optimizer.load_state_dict(ckpt['optimizer_state_dict'])
         start_epoch = ckpt['epoch'] + 1
-        best_val_loss = ckpt['val_loss']
-        print(f"Resumed from epoch {ckpt['epoch']} | val_loss={ckpt['val_loss']:.4f}")
+        best_val_seq = ckpt.get('val_seq_acc', 0.0)
+        print(f"Resumed from epoch {ckpt['epoch']} | val_seq_acc={best_val_seq:.4f}")
         
     early_stop_counter = 0
     
     for epoch in range(start_epoch, config['epochs'] + 1):
         print(f"\nEpoch {epoch}/{config['epochs']}")
         
-        if config.get('use_aggressive_data', False):
-            # Recreate train_loader each epoch to update the augmentation intensity curriculum
-            train_ds = InfiniteSequenceDataset(multidigit_bank, config, size=config['train_size_per_epoch'], augment=True, epoch=epoch)
-            train_loader = DataLoader(train_ds, batch_size=config['batch_size'], collate_fn=agg_collate_fn, num_workers=2, pin_memory=True)
+        # Recreate train_loader each epoch to update the augmentation intensity curriculum
+        train_ds = InfiniteSequenceDataset(multidigit_bank, config, size=config['train_size'], augment=True, epoch=epoch)
+        train_loader = DataLoader(train_ds, batch_size=config['batch_size'], collate_fn=agg_collate_fn, num_workers=config.get('num_workers', 4), pin_memory=True)
             
         train_loss, train_seq, train_char = train_epoch(model, train_loader, optimizer, criterion, device, steps_per_epoch)
         val_loss, val_seq, val_char = val_epoch(model, val_loader, criterion, device)
@@ -188,14 +183,14 @@ def main():
         
         scheduler.step(val_loss)
         
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
+        if val_seq > best_val_seq:
+            best_val_seq = val_seq
             early_stop_counter = 0
             save_checkpoint(
-                model, optimizer, epoch, val_loss,
+                model, optimizer, epoch, val_loss, val_seq,
                 path=os.path.join(checkpoint_dir, 'best_model.pt')
             )
-            print(f"  ✓ New best model saved (val_loss={val_loss:.4f})")
+            print(f"  ✓ New best model saved (val_seq_acc={val_seq:.4f})")
         else:
             early_stop_counter += 1
             

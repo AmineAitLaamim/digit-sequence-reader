@@ -5,17 +5,15 @@ config = {
     'overlap_max': 8, 'overlap_prob_max': 0.20,
     'seq_background_noise': 0.2,
     'seq_rotation': 3,
-    'train_size': 80_000, 'val_size': 10_000, 'test_size': 10_000,
+    'train_size': 100_000, 'val_size': 10_000, 'test_size': 10_000,
 
     # Data sources
     'datasets': ['emnist_digits', 'qmnist', 'usps'],
-    'train_size_per_epoch': 100_000,
-    'use_aggressive_data': True,
 
     # Augmentation
     'aug_warmup_epochs': 5,
     'augment': True, 'aug_rotation': 25, 'aug_shear': 15,
-    'aug_blur_kernel': 3, 'aug_blur_sigma': (0.1, 1.0),
+    'aug_noise_var': (10, 50), 'aug_blur_limit': 7,
     'aug_scale': (0.6, 1.3),
     'aug_translate': (0.2, 0.2),
     'aug_perspective': 0.1,
@@ -35,12 +33,14 @@ config = {
     # Training
     'batch_size': 64, 'epochs': 30, 'lr': 1e-3,
     'teacher_forcing_ratio': 0.5, 'clip_grad': 1.0,
+    'num_workers': 4,
+    'best_metric': 'val_seq_acc',
 
     # LR Scheduler (ReduceLROnPlateau)
-    'lr_patience': 3, 'lr_factor': 0.5, 'lr_min': 1e-6,
+    'lr_patience': 5, 'lr_factor': 0.5, 'lr_min': 1e-6,
 
     # Early stopping
-    'early_stop_patience': 8,
+    'early_stop_patience': 12,
 
     # Paths (overridden by argparse in train.py)
     'drive_path': '/content/drive/MyDrive/digit-sequence-reader',

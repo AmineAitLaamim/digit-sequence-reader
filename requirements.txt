@@ -7,3 +7,4 @@ seaborn
 Pillow
 tqdm
 albumentations>=1.3.0
+opencv-python-headless>=4.7.0
