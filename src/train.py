@@ -172,7 +172,7 @@ def main():
         
         # Recreate train_loader each epoch to update the augmentation intensity curriculum
         train_ds = InfiniteSequenceDataset(multidigit_bank, config, size=config['train_size'], augment=True, epoch=epoch)
-        train_loader = DataLoader(train_ds, batch_size=config['batch_size'], collate_fn=agg_collate_fn, num_workers=config.get('num_workers', 4), pin_memory=True)
+        train_loader = DataLoader(train_ds, batch_size=config['batch_size'], collate_fn=agg_collate_fn, num_workers=config.get('num_workers', 4), pin_memory=True, persistent_workers=True)
             
         train_loss, train_seq, train_char = train_epoch(model, train_loader, optimizer, criterion, device, steps_per_epoch)
         val_loss, val_seq, val_char = val_epoch(model, val_loader, criterion, device)
