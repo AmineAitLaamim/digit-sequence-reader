@@ -2,7 +2,8 @@ config = {
     # Data
     'img_height': 64, 'min_seq_len': 3, 'max_seq_len': 7,
     'gap_min': 0, 'gap_max': 12,
-    'overlap_max': 8, 'overlap_prob_max': 0.20,
+    'overlap_max': 8, 'overlap_prob_max': 0.10,
+    'overlap_start_epoch': 5,
     'seq_background_noise': 0.2,
     'seq_rotation': 3,
     'train_size': 100_000, 'val_size': 10_000, 'test_size': 10_000,
@@ -11,14 +12,10 @@ config = {
     'datasets': ['emnist_digits', 'qmnist', 'usps'],
 
     # Augmentation
-    'aug_warmup_epochs': 5,
-    'augment': True, 'aug_rotation': 25, 'aug_shear': 15,
-    'aug_noise_var': (10, 50), 'aug_blur_limit': 7,
-    'aug_scale': (0.6, 1.3),
-    'aug_translate': (0.2, 0.2),
-    'aug_perspective': 0.1,
+    'aug_warmup_epochs': 10,
+    'augment': True,
+    'aug_noise_var': (5, 20), 'aug_blur_limit': 3,
     'aug_erasing_p': 0.3,
-    'aug_elastic': False,
     'aug_brightness': 0.3,
     'aug_contrast': 0.3,
 

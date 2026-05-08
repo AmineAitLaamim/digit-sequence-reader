@@ -77,66 +77,35 @@ def get_digit_aug_pipeline(augment=True, config=None, epoch=1):
             transforms.ToTensor(),
         ])
 
-    warmup = config.get('aug_warmup_epochs', 5)
-    intensity = min(1.0, epoch / warmup)
+    intensity = min(1.0, epoch / config.get('aug_warmup_epochs', 10))
 
-    # Load parameters from config with defaults
-    rotation = config.get('aug_rotation', 25) * intensity
-    shear = config.get('aug_shear', 15) * intensity
-    # scale starts near 1.0 (0.6 + 0.4 = 1.0), expands to (0.6, 1.3)
-    scale_min = 0.6 + 0.4 * (1 - intensity)
-    scale_max = 1.0 + 0.3 * intensity
-    translate = config.get('aug_translate', (0.2, 0.2))[0] * intensity
-    perspective = config.get('aug_perspective', 0.1) * intensity
-    erasing_p = config.get('aug_erasing_p', 0.3) * intensity
-    elastic_p = (0.7 if config.get('aug_elastic', True) else 0.0) * intensity
-    brightness = config.get('aug_brightness', 0.3) * intensity
-    contrast = config.get('aug_contrast', 0.3) * intensity
-    noise_p = 0.4 * intensity
-
+    noise_var = config.get('aug_noise_var', (5, 20))
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         if hasattr(A, 'GaussianNoise'):
-            noise = A.GaussianNoise(std_range=(10.0, 50.0), p=noise_p)
+            noise = A.GaussianNoise(std_range=tuple(v * intensity for v in noise_var))
         else:
             try:
-                noise = A.GaussNoise(std_range=(10.0, 50.0), p=noise_p)
+                noise = A.GaussNoise(std_range=tuple(v * intensity for v in noise_var))
             except Exception:
-                noise = A.GaussNoise(var_limit=(100.0, 2500.0), p=noise_p)
+                noise = A.GaussNoise(var_limit=(noise_var[0]**2 * intensity, noise_var[1]**2 * intensity))
 
     transform = A.Compose([
-        A.Affine(
-            scale=(scale_min, scale_max),
-            translate_percent=(translate, translate),
-            rotate=(-rotation, rotation),
-            shear=(-shear, shear),
-            p=1.0
-        ),
-        A.Perspective(
-            scale=(0.0, max(0.001, perspective)),
-            p=0.5 * intensity
-        ),
-        A.ElasticTransform(
-            alpha=34.0,
-            sigma=4.0,
-            p=elastic_p
-        ),
         A.RandomBrightnessContrast(
-            brightness_limit=brightness,
-            contrast_limit=contrast,
-            p=0.5 * intensity
+            brightness_limit=config.get('aug_brightness', 0.3) * intensity,
+            contrast_limit=config.get('aug_contrast', 0.3) * intensity,
+            p=0.5
         ),
-        noise,
-        A.MotionBlur(
-            blur_limit=7,
-            p=0.3 * intensity
-        ),
+        A.OneOf([
+            noise,
+            A.MotionBlur(blur_limit=max(3, int(config.get('aug_blur_limit', 3) * intensity)))
+        ], p=0.4 * intensity),
         A.CoarseDropout(
-            num_holes_range=(1, 8),
-            hole_height_range=(1, 8),
-            hole_width_range=(1, 8),
-            p=erasing_p
+            max_holes=8,
+            max_height=8,
+            max_width=8,
+            p=config.get('aug_erasing_p', 0.3) * intensity
         ),
         A.Resize(64, 64),
         A.Normalize(mean=0.0, std=1.0),
@@ -153,9 +122,15 @@ def make_sequence(digit_bank, aug_pipeline, config, augment=False, epoch=1):
     L = random.randint(config['min_seq_len'], config['max_seq_len'])
     digits = [random.randint(0, 9) for _ in range(L)]
     
-    warmup = config.get('aug_warmup_epochs', 5)
-    intensity = min(1.0, epoch / warmup)
-    overlap_prob = config.get('overlap_prob_max', 0.20) * intensity if augment else 0.0
+    # Augmentation intensity — controls brightness, noise, dropout
+    aug_intensity = min(1.0, epoch / config.get('aug_warmup_epochs', 10))
+    
+    # Overlap probability — completely independent from augmentation intensity
+    if augment and epoch > config.get('overlap_start_epoch', 5):
+        overlap_intensity = min(1.0, (epoch - config.get('overlap_start_epoch', 5)) / 10.0)
+        overlap_prob = config.get('overlap_prob_max', 0.10) * overlap_intensity
+    else:
+        overlap_prob = 0.0
     
     sequence_parts = []
     for i, digit in enumerate(digits):
