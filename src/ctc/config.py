@@ -17,7 +17,10 @@ config = {
     'overlap_prob_max': 0.10,
     'overlap_start_epoch': 5,
     'seq_background_noise': 0.2,
-    'seq_rotation': 3,
+    # Mild rotation only (0 = no rotation at all). Kept small so the
+    # generated samples stay human-readable. To re-enable, set to 3-5.
+    'seq_rotation': 0,
+    'seq_shear': 0,
     'train_size': 100_000,
     'val_size': 10_000,
     'test_size': 10_000,

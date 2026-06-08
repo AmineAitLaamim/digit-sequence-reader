@@ -107,24 +107,41 @@ def get_digit_aug_pipeline(augment=True, config=None, epoch=1):
                 noise = A.GaussNoise(var_limit=(noise_var[0]**2 * intensity,
                                                 noise_var[1]**2 * intensity))
 
-    transform = A.Compose([
-        A.RandomBrightnessContrast(
-            brightness_limit=config.get('aug_brightness', 0.3) * intensity,
-            contrast_limit=config.get('aug_contrast', 0.3) * intensity,
-            p=0.5),
-        A.OneOf([
-            noise,
-            A.MotionBlur(blur_limit=max(3, int(config.get('aug_blur_limit', 3) * intensity)))
-        ], p=0.4 * intensity),
-        A.CoarseDropout(
-            max_holes=8,
-            max_height=8,
-            max_width=8,
-            p=config.get('aug_erasing_p', 0.3) * intensity),
-        A.Resize(64, 64),
-        A.Normalize(mean=0.0, std=1.0),
-        ToTensorV2(),
-    ])
+    # Read rotation / shear from config (kept mild so digits stay
+    # human-readable). If config has 0, we skip the transform entirely
+    # to keep the augmentation pipeline minimal.
+    rot_limit  = int(config.get('seq_rotation', 0))            # default 0 → no rotation
+    shear_lim  = int(config.get('seq_shear', 0))              # default 0 → no shear
+    geo_steps  = []
+    if rot_limit > 0:
+        # Scaled by `intensity` so early epochs get less rotation.
+        geo_steps.append(A.Affine(
+            rotate=(-rot_limit * intensity, rot_limit * intensity),
+            shear=(-shear_lim * intensity, shear_lim * intensity) if shear_lim > 0 else 0,
+            translate_percent=0,
+            scale=(1.0, 1.0),
+            p=0.5,
+        ))
+
+    transform = A.Compose(
+        geo_steps + [
+            A.RandomBrightnessContrast(
+                brightness_limit=config.get('aug_brightness', 0.3) * intensity,
+                contrast_limit=config.get('aug_contrast', 0.3) * intensity,
+                p=0.5),
+            A.OneOf([
+                noise,
+                A.MotionBlur(blur_limit=max(3, int(config.get('aug_blur_limit', 3) * intensity)))
+            ], p=0.4 * intensity),
+            A.CoarseDropout(
+                max_holes=8,
+                max_height=8,
+                max_width=8,
+                p=config.get('aug_erasing_p', 0.3) * intensity),
+            A.Resize(64, 64),
+            A.Normalize(mean=0.0, std=1.0),
+            ToTensorV2(),
+        ])
 
     def apply(pil_image):
         np_img = np.array(pil_image, dtype=np.uint8)

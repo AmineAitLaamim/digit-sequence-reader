@@ -81,7 +81,13 @@ def main():
     args = parser.parse_args()
 
     pred = predict(args.image, args.checkpoint, args.visualize)
-    print(f"Prediction: {pred}")
+    # Loud, unambiguous final-result banner so the answer is easy to
+    # scrape from a long Colab / shell log.
+    print()
+    print("=" * 60)
+    print(f"  FINAL RESULT:  {pred}")
+    print(f"  (length: {len(pred)} digits)")
+    print("=" * 60)
 
 
 if __name__ == '__main__':
