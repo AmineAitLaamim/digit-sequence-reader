@@ -159,7 +159,7 @@ def main():
     # resume always points to best_model.pt
     if args.resume and os.path.exists(args.resume):
         ckpt = torch.load(args.resume, map_location=device)
-        model.load_state_dict(ckpt['model_state_dict'])
+        model.load_state_dict(ckpt['model_state_dict'], strict=False)
         optimizer.load_state_dict(ckpt['optimizer_state_dict'])
         start_epoch = ckpt['epoch'] + 1
         best_val_seq = ckpt.get('val_seq_acc', 0.0)

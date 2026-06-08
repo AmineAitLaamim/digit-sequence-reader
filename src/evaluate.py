@@ -25,7 +25,7 @@ def main():
     
     model = Seq2Seq().to(device)
     ckpt = torch.load(args.checkpoint, map_location=device)
-    model.load_state_dict(ckpt['model_state_dict'])
+    model.load_state_dict(ckpt['model_state_dict'], strict=False)
     
     model.eval()
     all_targets_cm = []

@@ -49,24 +49,33 @@ class CNNEncoder(nn.Module):
 class BiLSTMEncoder(nn.Module):
     def __init__(self):
         super().__init__()
-        self.lstm = nn.LSTM(input_size=1024, hidden_size=config['hidden_size'], 
+        # Relative positional encoding: scalar position in [0,1] -> feature dim
+        # Allows the encoder to generalise to image widths unseen during training
+        self.pos_proj = nn.Linear(1, 1024)
+        self.lstm = nn.LSTM(input_size=1024, hidden_size=config['hidden_size'],
                             bidirectional=True, batch_first=True)
         # linear layers to project from 512 (256*2) to 256
         self.hidden_proj = nn.Linear(config['hidden_size'] * 2, config['hidden_size'])
-        self.cell_proj = nn.Linear(config['hidden_size'] * 2, config['hidden_size'])
-        
+        self.cell_proj   = nn.Linear(config['hidden_size'] * 2, config['hidden_size'])
+
     def forward(self, x):
         # x: [B, T, 1024]
+        T = x.size(1)
+        # Relative positions in [0, 1] regardless of actual sequence length
+        positions = torch.linspace(0, 1, T, device=x.device)   # [T]
+        pos_emb   = self.pos_proj(positions.unsqueeze(-1))      # [T, 1024]
+        x = x + pos_emb.unsqueeze(0)                            # broadcast over B
+
         encoder_outputs, (h, c) = self.lstm(x)
         # h, c are [2, B, 256] -> need to concat directions to get [B, 512] then project
-        
+
         # Concat fwd and bwd states
-        h_concat = torch.cat((h[0], h[1]), dim=1) # [B, 512]
-        c_concat = torch.cat((c[0], c[1]), dim=1) # [B, 512]
-        
-        hidden = torch.tanh(self.hidden_proj(h_concat)) # [B, 256]
-        cell = torch.tanh(self.cell_proj(c_concat))     # [B, 256]
-        
+        h_concat = torch.cat((h[0], h[1]), dim=1)  # [B, 512]
+        c_concat = torch.cat((c[0], c[1]), dim=1)  # [B, 512]
+
+        hidden = torch.tanh(self.hidden_proj(h_concat))  # [B, 256]
+        cell   = torch.tanh(self.cell_proj(c_concat))    # [B, 256]
+
         return encoder_outputs, hidden, cell
 
 class BahdanauAttention(nn.Module):
@@ -130,57 +139,82 @@ class Seq2Seq(nn.Module):
         self.encoder_cnn = CNNEncoder()
         self.encoder_rnn = BiLSTMEncoder()
         self.decoder = LSTMDecoder()
-        
+
     def forward(self, images, targets=None, teacher_forcing_ratio=None):
         if teacher_forcing_ratio is None:
             teacher_forcing_ratio = config['teacher_forcing_ratio'] if self.training else 0.0
-            
+
         B = images.size(0)
-        
-        # targets can be None during inference where we don't know max_len, default to max_seq_len + 2
-        max_len = targets.size(1) if targets is not None else config['max_seq_len'] + 2
-        
+        device = images.device
+
         cnn_features = self.encoder_cnn(images)
         encoder_outputs, hidden, cell = self.encoder_rnn(cnn_features)
-        
-        T_enc = encoder_outputs.size(1)
-        
-        # Outputs storage
-        # Need to offset logits_seq by 1 less than max_len because we predict (max_len - 1) tokens
-        seq_len = max_len - 1
-        logits_seq = torch.zeros(B, seq_len, config['vocab_size'], device=images.device)
-        alphas_seq = torch.zeros(B, seq_len, T_enc, device=images.device)
-        
-        # Step 0: start token
+
         if targets is not None:
-            prev_token = targets[:, 0]
+            # ── Training path ─────────────────────────────────────────────
+            # Decode for exactly (target_len - 1) steps (SOS is input, not output)
+            seq_len = targets.size(1) - 1
+            T_enc = encoder_outputs.size(1)
+
+            logits_seq = torch.zeros(B, seq_len, config['vocab_size'], device=device)
+            alphas_seq = torch.zeros(B, seq_len, T_enc, device=device)
+
+            prev_token = targets[:, 0]  # SOS
+
+            for t in range(seq_len):
+                logits, hidden, cell, alpha = self.decoder.forward_step(
+                    prev_token, hidden, cell, encoder_outputs
+                )
+                logits_seq[:, t, :] = logits
+                alphas_seq[:, t, :] = alpha
+
+                teacher_force = random.random() < teacher_forcing_ratio
+                prev_token = targets[:, t + 1] if teacher_force else logits.argmax(1)
+
         else:
-            prev_token = torch.full((B,), config['SOS_IDX'], dtype=torch.long, device=images.device)
-            
-        for t in range(seq_len):
-            logits, hidden, cell, alpha = self.decoder.forward_step(prev_token, hidden, cell, encoder_outputs)
-            
-            logits_seq[:, t, :] = logits
-            alphas_seq[:, t, :] = alpha
-            
-            # Decide next token
-            teacher_force = random.random() < teacher_forcing_ratio
-            top1 = logits.argmax(1)
-            
-            if teacher_force and targets is not None:
-                # targets[:, t+1] because prev_token was at t
-                prev_token = targets[:, t+1]
-            else:
-                prev_token = top1
-                
+            # ── Inference path ────────────────────────────────────────────
+            # No length cap — run until every sequence in the batch emits EOS.
+            # Output length is determined entirely by the model.
+            T_enc = encoder_outputs.size(1)
+
+            logits_list = []
+            alphas_list = []
+
+            prev_token = torch.full((B,), config['SOS_IDX'], dtype=torch.long, device=device)
+            finished   = torch.zeros(B, dtype=torch.bool, device=device)
+
+            while not finished.all():
+                logits, hidden, cell, alpha = self.decoder.forward_step(
+                    prev_token, hidden, cell, encoder_outputs
+                )
+                logits_list.append(logits.unsqueeze(1))   # [B, 1, vocab_size]
+                alphas_list.append(alpha.unsqueeze(1))    # [B, 1, T_enc]
+
+                prev_token  = logits.argmax(1)
+                finished   |= (prev_token == config['EOS_IDX'])
+
+            logits_seq = torch.cat(logits_list, dim=1)   # [B, L, vocab_size]
+            alphas_seq = torch.cat(alphas_list, dim=1)   # [B, L, T_enc]
+
         return logits_seq, alphas_seq
 
 if __name__ == '__main__':
     import torch
     model = Seq2Seq()
+
     dummy_img    = torch.zeros(2, 1, 64, 320)       # batch=2, width=320
-    dummy_target = torch.randint(0, 13, (2, 8))     # batch=2, seq_len=8
+    dummy_target = torch.randint(0, 13, (2, 9))     # batch=2, seq_len=9 (includes SOS)
+
+    # --- Training forward (with targets) ---
+    model.train()
     logits, alphas = model(dummy_img, dummy_target)
-    print(f"Logits shape : {logits.shape}")          # expect [2, 7, 13]
-    print(f"Alphas shape : {alphas.shape}")          # expect [2, 7, T_enc]
+    print(f"[train] Logits shape : {logits.shape}")   # expect [2, 8, 13]
+    print(f"[train] Alphas shape : {alphas.shape}")   # expect [2, 8, T_enc]
+
+    # --- Inference forward (no targets, no length cap — stops on EOS) ---
+    model.eval()
+    with torch.no_grad():
+        logits_inf, alphas_inf = model(dummy_img, targets=None, teacher_forcing_ratio=0.0)
+    print(f"[infer] Logits shape : {logits_inf.shape}")  # [2, L, 13] where L is EOS-determined
+    print(f"[infer] Alphas shape : {alphas_inf.shape}")
     print("Forward pass OK")

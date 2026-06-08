@@ -1,6 +1,6 @@
 config = {
     # Data
-    'img_height': 64, 'min_seq_len': 3, 'max_seq_len': 7,
+    'img_height': 64, 'min_seq_len': 3, 'max_seq_len': 7, 'max_seq_len_final': 12,
     'gap_min': 0, 'gap_max': 12,
     'overlap_max': 8, 'overlap_prob_max': 0.10,
     'overlap_start_epoch': 5,

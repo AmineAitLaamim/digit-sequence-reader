@@ -122,8 +122,22 @@ def get_digit_aug_pipeline(augment=True, config=None, epoch=1):
 
     return apply
 
+
+def get_curriculum_max_len(epoch, config):
+    """Linearly grow max sequence length from max_seq_len to max_seq_len_final
+    after aug_warmup_epochs, over the next 20 epochs."""
+    base   = config['max_seq_len']                         # 7
+    final  = config.get('max_seq_len_final', 12)           # 12
+    warmup = config.get('aug_warmup_epochs', 10)           # 10
+    if epoch <= warmup:
+        return base
+    progress = min(1.0, (epoch - warmup) / 20.0)
+    return int(base + progress * (final - base))
+
+
 def make_sequence(digit_bank, aug_pipeline, config, augment=False, epoch=1):
-    L = random.randint(config['min_seq_len'], config['max_seq_len'])
+    max_len = get_curriculum_max_len(epoch, config) if augment else config['max_seq_len']
+    L = random.randint(config['min_seq_len'], max_len)
     digits = [random.randint(0, 9) for _ in range(L)]
     
     # Augmentation intensity — controls brightness, noise, dropout

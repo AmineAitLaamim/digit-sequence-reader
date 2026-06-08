@@ -29,10 +29,10 @@ def greedy_decode(model, image_tensor, device):
     with torch.no_grad():
         images = image_tensor.to(device)
         logits, alphas = model(images, targets=None, teacher_forcing_ratio=0.0)
-        
+
         preds = logits.argmax(dim=-1)[0].cpu().numpy()
         alpha = alphas[0].cpu().numpy()
-        
+
         pred_digits = []
         pred_len = 0
         for p in preds:
@@ -41,7 +41,7 @@ def greedy_decode(model, image_tensor, device):
                 break
             if p < 10:
                 pred_digits.append(str(p))
-                
+
         pred_string = "".join(pred_digits)
         return pred_string, alpha[:pred_len, :]
 
@@ -49,8 +49,9 @@ def predict(image_path, checkpoint_path, visualize=False):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = Seq2Seq().to(device)
     ckpt = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(ckpt['model_state_dict'])
-    
+    # strict=False allows loading checkpoints that pre-date the pos_proj layer
+    model.load_state_dict(ckpt['model_state_dict'], strict=False)
+
     img_tensor, orig_img = preprocess_image(image_path)
     pred_string, alpha = greedy_decode(model, img_tensor, device)
     
