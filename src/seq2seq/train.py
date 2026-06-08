@@ -9,8 +9,8 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
 
-from config import config
-from model import Seq2Seq
+from .config import config
+from .model import Seq2Seq
 
 def compute_accuracy(logits, targets, lengths):
     # logits: [B, T, vocab_size]
@@ -142,7 +142,7 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
     
-    from dataset_aggressive import get_dataloaders, InfiniteSequenceDataset, collate_fn as agg_collate_fn
+    from .dataset_aggressive import get_dataloaders, InfiniteSequenceDataset, collate_fn as agg_collate_fn
     from torch.utils.data import DataLoader
     
     multidigit_bank, val_loader, test_loader = get_dataloaders(data_path=config['data_path'])

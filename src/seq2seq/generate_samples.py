@@ -5,8 +5,8 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 import torch
 import torchvision.transforms as transforms
-from dataset_aggressive import build_multidigit_bank, get_digit_aug_pipeline, make_sequence
-from config import config
+from .dataset_aggressive import build_multidigit_bank, get_digit_aug_pipeline, make_sequence
+from .config import config
 
 def main():
     print("Downloading EMNIST, QMNIST, USPS and building digit bank...")

@@ -9,9 +9,9 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
 
-from config import config
-from dataset_aggressive import get_dataloaders
-from model import Seq2Seq
+from .config import config
+from .dataset_aggressive import get_dataloaders
+from .model import Seq2Seq
 
 def main():
     parser = argparse.ArgumentParser()

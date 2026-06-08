@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import random
-from config import config
+from .config import config
 
 class CNNEncoder(nn.Module):
     def __init__(self):

@@ -6,7 +6,7 @@ import torchvision
 from torchvision import transforms
 from torch.utils.data import Dataset, DataLoader
 import random
-from config import config
+from .config import config
 
 def build_digit_bank(data_path, train=True):
     dataset = torchvision.datasets.MNIST(

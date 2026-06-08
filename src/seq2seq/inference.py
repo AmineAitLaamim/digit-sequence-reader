@@ -7,8 +7,8 @@ import torchvision.transforms as transforms
 from PIL import Image
 import matplotlib.pyplot as plt
 
-from config import config
-from model import Seq2Seq
+from .config import config
+from .model import Seq2Seq
 
 def preprocess_image(image_path):
     img = Image.open(image_path).convert('L')

@@ -13,7 +13,7 @@ import ssl
 # Bypass SSL verification for torchvision downloads (USPS specifically)
 ssl._create_default_https_context = ssl._create_unverified_context
 
-from config import config
+from .config import config
 
 def build_multidigit_bank(data_path='./data'):
     os.makedirs(data_path, exist_ok=True)
@@ -70,7 +70,7 @@ def get_dataloaders(data_path=None):
 
 def get_digit_aug_pipeline(augment=True, config=None, epoch=1):
     if config is None:
-        from config import config
+        from .config import config
     import albumentations as A
     from albumentations.pytorch import ToTensorV2
 
