@@ -30,11 +30,18 @@ config = {
     # Training
     'batch_size': 64, 'epochs': 30, 'lr': 1e-3,
     'teacher_forcing_ratio': 0.5, 'clip_grad': 1.0,
+    # Scheduled sampling: anneal teacher-forcing ratio from tf_start -> tf_end
+    # across training to combat exposure bias / train-inference mismatch.
+    'tf_start': 0.5, 'tf_end': 0.2, 'tf_anneal_epochs': 20,
     'num_workers': 2,
     'best_metric': 'val_seq_acc',
 
-    # LR Scheduler (ReduceLROnPlateau)
+    # LR Scheduler (ReduceLROnPlateau on val_seq_acc, mode='max')
     'lr_patience': 5, 'lr_factor': 0.5, 'lr_min': 1e-6,
+
+    # Divergence guard: if val_loss spikes > div_guard_mult × best loss,
+    # roll back weights to best checkpoint instead of saving a bad "best".
+    'div_guard_mult': 5.0,
 
     # Early stopping
     'early_stop_patience': 12,
