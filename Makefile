@@ -10,9 +10,21 @@ generate:
 	python -m src.seq2seq.generate_samples
 
 # ── CTC (new, parallel non-autoregressive) ─────────────────────────────
-# Run CTC inference locally with visualization
+# Run CTC inference locally with visualization.
+# Optional accuracy metrics:
+#   make ctc-infer                                    # no GT comparison
+#   make ctc-infer GT=12345                            # explicit ground truth
+#   make ctc-infer IMAGE=samples/sample_L7_1234567.png # auto-extract GT from filename
+#   make ctc-infer NO_GT=1                             # force skip GT comparison
+IMAGE = samples/sample_L100_1186537628872393878000142726628586789844612808041049807894835729434881075053828820551863618760738418.png
+GT = 1186537628872393878000142726628586789844612808041049807894835729434881075053828820551863618760738418
 ctc-infer:
-	python -m src.ctc.inference --checkpoint model/best_ctc.pt --image samples/sample_L100_1186537628872393878000142726628586789844612808041049807894835729434881075053828820551863618760738418.png --visualize
+	python -m src.ctc.inference \
+		--checkpoint model/best_ctc.pt \
+		--image $(if $(IMAGE),$(IMAGE),samples/test.png) \
+		--visualize \
+		$(if $(GT),--ground-truth $(GT),) \
+		$(if $(NO_GT),--no-gt,)
 
 # Generate local CTC-style samples (enforces width >= digits*16)
 ctc-generate:

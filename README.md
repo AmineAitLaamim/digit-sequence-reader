@@ -1,92 +1,110 @@
 # Digit Sequence Reader
 
-A deep learning model that reads a **variable-length sequence of handwritten digits** from a single stitched image and outputs the correct string of numbers.
+A deep learning project that reads a **variable-length sequence of handwritten digits** from a single stitched image and outputs the correct string of numbers.
 
-**Architecture:** `CNN + Bidirectional LSTM` → `Bahdanau Attention` → `LSTM Decoder`  
-**Data:** Generated on-the-fly from **EMNIST + QMNIST + USPS** (~307,000 real handwritten digits)  
-**Training:** Google Colab T4 GPU · Checkpoints auto-saved to Google Drive  
+The repository features two distinct approaches to sequence reading:
+1. **Autoregressive Sequence-to-Sequence (Seq2Seq)**: Uses a `CNN + Bidirectional LSTM` encoder, `Bahdanau Attention`, and an `LSTM Decoder` loop to output characters step-by-step.
+2. **Parallel Connectionist Temporal Classification (CTC)**: Uses a `2D CNN` encoder, a height mean collapse layer, a `1D Dilated Residual CNN` encoder, a linear classifier head, and a `CTC Loss` function. This model is non-autoregressive and excels at **generalizing to sequence lengths far beyond the training distribution** (length extrapolation).
 
 ---
 
-## Example
+## 📖 Key Documentation
 
-Below is the model correctly predicting the sequence `8516313` from a stitched image of real handwriting.
+* **[Comprehensive System Documentation (PROJECT_DOCUMENTATION.md)](PROJECT_DOCUMENTATION.md)**: The main, detailed guide covering the architecture of both models, mathematical formulations, the data pipeline (EMNIST + QMNIST + USPS), curriculum learning, the CTC width guarantee, and step-by-step guides for training and inference.
+* **[CTC Architecture deep dive](docs/CTC_ARCHITECTURE.md)**: Technical trace of shapes and layers in the CTC model.
+* **[Length Extrapolation detailed analysis](docs/CTC_EXTRAPOLATION.md)**: Explanation of why Seq2Seq fails at extrapolation and why CTC handles it gracefully.
+* **[CTC Training guidelines](docs/CTC_TRAINING.md)**: Curriculum settings, free-logits optimization, and troubleshooting.
+* **[CTC Inference guidelines](docs/CTC_INFERENCE.md)**: Greedy decoding details, Levenshtein edit distance, and visualization tools.
+* **[File reference guide](docs/CTC_FILE_REFERENCE.md)**: Quick pointers to public APIs for all scripts.
 
-**Input image:**  
+---
+
+## 🚀 Quick Start (CTC Model)
+
+### 1. Installation
+Install project dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+### 2. Generate Sample Images
+To synthesize 20 sample images from the training distribution:
+```bash
+make ctc-generate
+```
+
+### 3. Training
+To train the CTC model locally (automatically updating the augmentation and length curriculum):
+```bash
+make ctc-train
+```
+Checkpoints will be saved to `./model/checkpoints_ctc/best_ctc.pt`.
+
+### 4. Inference and Visualization
+To run inference on a test image (e.g., `samples/test.png`) and view the temporal prediction plot:
+```bash
+make ctc-infer
+```
+
+You can specify a different image and supply ground truth to compute Character Error Rate (CER):
+```bash
+make ctc-infer IMAGE=samples/sample_L7_8675476.png
+```
+
+### 5. Length Extrapolation Evaluation
+To benchmark the CTC model on sequence lengths $1 \to 50$ (trained on lengths $\le 12$):
+```bash
+make ctc-eval-extrap
+```
+This plots Sequence Accuracy and CER against length, saving the result to `./model/metrics/ctc_length_extrapolation.png`.
+
+---
+
+## 🚀 Quick Start (Seq2Seq Model)
+
+### 1. Training
+To train the Seq2Seq model:
+```bash
+python -m src.seq2seq.train --drive_path ./model
+```
+
+### 2. Inference
+To predict an image and display the soft attention spotlight heatmap:
+```bash
+make infer
+```
+
+---
+
+## 🏛️ Architecture & Data At A Glance
+
+### Parallel CTC Flow
+```
+Input Image [B, 1, 64, W] ──► 2D CNN ──► Collapsed Sequence [B, 512, W//8] ──► Dilated 1D CNN ──► Linear Head ──► CTC Greedy Decoder
+```
+
+### Dynamic Data Generation
+Training sequences are generated **on-the-fly** from a combined pool of **~307,000 real handwritten digits** (EMNIST, QMNIST, USPS). The dataset loader dynamically concatenates characters with variable gaps and curriculum-based overlaps. 
+
+Albumentations augmentations (brightness, noise, blur, dropout) scale in intensity over the first 10 epochs. The generator strictly enforces the **CTC width guarantee** ($W \ge \max(64, L \times 16)$) to ensure the network downsampling doesn't violate the CTC sequence length condition ($T \ge L$).
+
+---
+
+## 📊 Example Predictions
+
+### Input Image:
 ![Sample Image](img-readme/sample_5_8516313.png)
 
-**Predicted sequence:**  
-![Prediction & Attention](img-readme/8516313.png)
+### Seq2Seq Predicted Sequence & Soft Attention:
+![Attention Heatmap](img-readme/8516313.png)
+*(The attention spotlight sweeps naturally from left to right as the decoder step increases.)*
 
-**Input image:**  
-![Sample Image](img-readme/sample_6_8675476.png)
-
-**Predicted sequence:**  
-![Prediction & Attention](img-readme/8675476.png)
-
-**attention heatmap:**
-![Figure 1](img-readme/Figure_1.png)
-
-Each row in the heatmap is one decoding step. The model independently learns to sweep its attention spotlight from left to right across the image as it predicts each digit — with zero explicit supervision on where each digit is located.
+### CTC Predicted Sequence & Temporal Argmax Trace:
+When running `make ctc-infer`, the system plots a frame-by-frame prediction trace (with intermediate `BLANK` peaks) indicating the alignment discovered by CTC.
 
 ---
 
-## How It Works
-
-The model is an **Encoder–Decoder with Attention**. No bounding boxes or segmentation are required, it learns where each digit is purely from training.
-
-**Encoder:** A CNN extracts visual features from the image column by column. A Bidirectional LSTM then enriches each column with context from both its left and right neighbours, producing a sequence of feature vectors that represent the full image.
-
-**Decoder:** An LSTM generates the output one digit at a time. At each step it uses **Bahdanau Attention** to compute a weighted sum over the encoder features, focusing on the region of the image most relevant to the digit it is about to predict. The attention spotlight naturally shifts left to right as decoding progresses.
-
-**Output:** The decoder keeps predicting until it emits an end-of-sequence token, so the output length is fully variable.
-
----
-
-## Training Data
-
-Training sequences are generated **dynamically on-the-fly** from a combined pool of ~307,000 real handwritten digits (EMNIST, QMNIST, USPS). Each sequence is a random 3–7 digit string assembled by stitching individual digit images together with random gaps or overlaps.
-
-Augmentations (brightness, noise, blur, dropout) are applied per-digit during training only, ramping up gradually over the first 10 epochs so the model stabilizes before seeing heavy degradation. Overlapping characters are introduced separately starting at epoch 5. The source datasets already contain natural geometric variation from real handwriting, so no geometric transforms are added.
-
----
-
-## Project Structure
-
-```
-digit-sequence-reader/
-│
-├── src/
-│   ├── config.py              ← All hyperparameters in one place
-│   ├── dataset_aggressive.py  ← EMNIST/QMNIST/USPS loading, augmentation, IterableDataset
-│   ├── model.py               ← CNNEncoder, BiLSTMEncoder, Attention, Decoder, Seq2Seq
-│   ├── train.py               ← Training loop, checkpointing, metrics CSV
-│   ├── evaluate.py            ← Accuracy metrics, confusion matrix, attention heatmaps
-│   ├── inference.py           ← Greedy decode any image from the command line
-│   └── generate_samples.py    ← Generate sample images from the training distribution
-│
-├── train_colab.ipynb          ← Colab launcher (mount Drive → clone → train → evaluate)
-├── Makefile                   ← Local shortcuts: make infer, make generate
-└── requirements.txt
-```
-
----
-
-
-## Requirements
-
-```
-torch>=2.0.0
-torchvision>=0.15.0
-albumentations>=1.3.0
-opencv-python-headless>=4.7.0
-numpy
-matplotlib
-scikit-learn
-Pillow
-tqdm
-```
-
----
-
-For full technical details on the architecture, attention math, design decisions, and data pipeline see [PROJECT.md](PROJECT.md).
+## 💻 Google Colab Notebooks
+You can also run training on a Google Colab GPU:
+* **[Seq2Seq Notebook](train_colab.ipynb)**
+* **[CTC Notebook](train_colab_ctc.ipynb)**
