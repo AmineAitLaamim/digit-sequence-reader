@@ -16,6 +16,7 @@ distribution** without learning a length prior.
 | **[`CTC_INFERENCE.md`](./CTC_INFERENCE.md)** | How to run the trained model on a single image, how the greedy decoder works, how to read the FINAL RESULT banner, and the full Makefile command reference. |
 | **[`CTC_EXTRAPOLATION.md`](./CTC_EXTRAPOLATION.md)** | The key selling point of the model: how and why it generalises to unseen lengths. Includes the `evaluate_extrapolation.py` script and how to interpret the length-vs-accuracy plot. |
 | **[`CTC_FILE_REFERENCE.md`](./CTC_FILE_REFERENCE.md)** | File-by-file reference for every module in `src/ctc/`, with the public API of each. |
+| **[`ABLATION_UNCAPPED.md`](./ABLATION_UNCAPPED.md)** | The `CRNN_CTC_Uncapped` ablation study — the one architectural change (6 dilated blocks, RF≈252), the hypothesis it tests, expected results, and how to reproduce the experiment. |
 
 ---
 
@@ -38,10 +39,11 @@ make ctc-eval-extrap   # synthesises L in {1,3,5,...,50} and plots seq-acc + CER
 ```
 
 ### Google Colab
-Open [`train_colab_ctc.ipynb`](../train_colab_ctc.ipynb). The cells cover:
-mount Drive, clone the repo, install deps, sanity-check shapes, train,
-plot curves, generate samples, run the extrapolation check, and predict
-on a custom upload.
+
+| Notebook | Purpose |
+|----------|---------|
+| [`train_colab_ctc.ipynb`](../train_colab_ctc.ipynb) | Train the **baseline** `CRNN_CTC` model end-to-end. |
+| [`notebooks/train_colab_ctc_uncapped.ipynb`](../notebooks/train_colab_ctc_uncapped.ipynb) | Train the **ablation** `CRNN_CTC_Uncapped` model and run the length-extrapolation comparison. |
 
 ---
 
@@ -113,17 +115,23 @@ Run `make ctc-eval-extrap` after training to generate the actual curve.
 ## 🗂️ Repo Layout (CTC-specific files only)
 
 ```
-src/ctc/
-├── config.py                     # all hyperparameters, vocab, paths
-├── model.py                      # CRNN_CTC architecture + greedy_decode
-├── dataset.py                    # data pipeline + collate_fn (4-key dict)
-├── train.py                      # training loop with CTC loss + free logits
-├── inference.py                  # single-image inference + accuracy metrics
-├── generate_samples.py           # 20 random samples (curriculum epoch)
-├── generate_one.py               # ONE sample of an exact length
-└── evaluate_extrapolation.py     # length-vs-accuracy benchmarking
-docs/                            # this folder
-train_colab_ctc.ipynb            # mirror of the original Colab notebook
+src/
+├── ctc/                          # Baseline (production) model
+│   ├── config.py                 # all hyperparameters, vocab, paths
+│   ├── model.py                  # CRNN_CTC architecture + greedy_decode
+│   ├── dataset.py                # data pipeline + collate_fn (4-key dict)
+│   ├── train.py                  # training loop with CTC loss + free logits
+│   ├── inference.py              # single-image inference + accuracy metrics
+│   ├── generate_samples.py       # 20 random samples (curriculum epoch)
+│   ├── generate_one.py           # ONE sample of an exact length
+│   └── evaluate_extrapolation.py # length-vs-accuracy benchmarking
+└── CRNN_CTC_Uncapped/            # Ablation model (uncapped receptive field)
+    ├── __init__.py
+    └── model.py                  # CRNN_CTC_Uncapped, RF≈252, dilations [1,2,4,8,16,32]
+docs/                             # this folder
+train_colab_ctc.ipynb             # Colab notebook — baseline model
+notebooks/
+└── train_colab_ctc_uncapped.ipynb  # Colab notebook — ablation model
 ```
 
 ---
