@@ -165,9 +165,13 @@ def make_sequence(digit_bank, aug_pipeline, config, augment=False, epoch=1):
                 spacer = torch.zeros(1, 64, gap)
                 sequence_parts.append(spacer)
             elif gap < 0:
-                # trim the right side of the last item in sequence_parts
+                # trim the right side of the last item in sequence_parts;
+                # clamp so we never produce a zero-width (or negative-width) tensor
                 if sequence_parts:
-                    sequence_parts[-1] = sequence_parts[-1][:, :, :-abs(gap)]
+                    last = sequence_parts[-1]
+                    trim = min(abs(gap), last.size(2) - 1)  # leave at least 1 column
+                    if trim > 0:
+                        sequence_parts[-1] = last[:, :, :-trim]
                     
         sequence_parts.append(img_tensor)
         
@@ -198,8 +202,11 @@ class InfiniteSequenceDataset(IterableDataset):
         worker_size = self.size
         
         if worker_info is not None:
-            np.random.seed(np.random.get_state()[1][0] + worker_info.id)
-            random.seed(random.getstate()[1][0] + worker_info.id)
+            # torch.initial_seed() is set by PyTorch to a unique value per worker
+            # per epoch, so this gives genuinely independent streams across both.
+            worker_seed = torch.initial_seed() % (2**32)
+            np.random.seed(worker_seed)
+            random.seed(worker_seed)
             
             if self.size is not None:
                 worker_size = self.size // worker_info.num_workers

@@ -105,27 +105,41 @@ def val_epoch(model, dataloader, criterion, device):
     total_loss = 0
     total_seq_acc = 0
     total_char_acc = 0
-    
+
     with torch.no_grad():
         for images, targets, lengths in tqdm(dataloader, desc="Validation", leave=False):
             images, targets = images.to(device), targets.to(device)
-            
-            # teacher_forcing_ratio=0.0 during eval
-            logits, alphas = model(images, targets, teacher_forcing_ratio=0.0)
-            
-            aligned_targets = targets[:, 1:]
-            
-            logits_flat = logits.reshape(-1, config['vocab_size'])
+
+            # True free-running inference — no teacher forcing, no target length oracle.
+            # This mirrors actual deployment and prevents inflated val metrics /
+            # an over-optimistic LR scheduler signal.
+            logits, alphas = model(images, targets=None)   # [B, L_pred, vocab]
+
+            aligned_targets = targets[:, 1:]               # [B, T_tgt]
+            T_pred = logits.size(1)
+            T_tgt  = aligned_targets.size(1)
+
+            # Align predicted logits to target length for loss computation.
+            # Padding with zeros penalises under-prediction at non-PAD positions;
+            # truncating discards logits that are past the target EOS.
+            if T_pred < T_tgt:
+                pad = torch.zeros(
+                    logits.size(0), T_tgt - T_pred, config['vocab_size'], device=device
+                )
+                logits_aligned = torch.cat([logits, pad], dim=1)
+            else:
+                logits_aligned = logits[:, :T_tgt, :]
+
+            logits_flat  = logits_aligned.reshape(-1, config['vocab_size'])
             targets_flat = aligned_targets.reshape(-1)
-            
+
             loss = criterion(logits_flat, targets_flat)
-            
             total_loss += loss.item()
-            
-            seq_acc, char_acc = compute_accuracy(logits, aligned_targets, lengths)
+
+            seq_acc, char_acc = compute_accuracy(logits_aligned, aligned_targets, lengths)
             total_seq_acc += seq_acc
             total_char_acc += char_acc
-            
+
     n = len(dataloader)
     return total_loss / n, total_seq_acc / n, total_char_acc / n
 

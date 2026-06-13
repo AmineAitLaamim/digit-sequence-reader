@@ -5,7 +5,7 @@
 # ── Seq2Seq (old, autoregressive) ──────────────────────────────────────
 # Run inference locally with visualization
 infer:
-	python -m src.seq2seq.inference --checkpoint model/best_model_v1.pt --image samples/test.png --visualize
+	python -m src.seq2seq.inference --checkpoint model/best_model.pt --image samples/test.png --visualize
 
 # Generate local digit sequence samples
 generate:

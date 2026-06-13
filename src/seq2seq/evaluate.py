@@ -34,12 +34,14 @@ def main():
     seq_acc_count = 0
     char_correct = 0
     char_total = 0
+    total_samples = 0  # count actual samples, not dataset.size (IterableDataset mismatch)
     
     samples_for_attention = []
     
     with torch.no_grad():
         for images, targets, lengths in test_loader:
             images, targets = images.to(device), targets.to(device)
+            total_samples += images.size(0)
             logits, alphas = model(images, targets=None, teacher_forcing_ratio=0.0)
             preds = logits.argmax(dim=-1)
             
@@ -75,7 +77,7 @@ def main():
                         all_targets_cm.append(tt.item())
                         all_preds_cm.append(pt.item())
 
-    seq_acc = seq_acc_count / len(test_loader.dataset)
+    seq_acc = seq_acc_count / max(1, total_samples)
     char_acc = char_correct / max(1, char_total)
     
     metrics = {

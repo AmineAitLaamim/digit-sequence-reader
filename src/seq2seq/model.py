@@ -5,7 +5,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import random
-from .config import config
+try:
+    from .config import config
+except ImportError:
+    from config import config  # fallback for direct script execution
 
 class CNNEncoder(nn.Module):
     def __init__(self):
@@ -54,6 +57,7 @@ class BiLSTMEncoder(nn.Module):
         self.pos_proj = nn.Linear(1, 1024)
         self.lstm = nn.LSTM(input_size=1024, hidden_size=config['hidden_size'],
                             bidirectional=True, batch_first=True)
+        self.dropout = nn.Dropout(config['enc_dropout'])   # applied to encoder outputs
         # linear layers to project from 512 (256*2) to 256
         self.hidden_proj = nn.Linear(config['hidden_size'] * 2, config['hidden_size'])
         self.cell_proj   = nn.Linear(config['hidden_size'] * 2, config['hidden_size'])
@@ -67,6 +71,7 @@ class BiLSTMEncoder(nn.Module):
         x = x + pos_emb.unsqueeze(0)                            # broadcast over B
 
         encoder_outputs, (h, c) = self.lstm(x)
+        encoder_outputs = self.dropout(encoder_outputs)   # regularise encoder outputs
         # h, c are [2, B, 256] -> need to concat directions to get [B, 512] then project
 
         # Concat fwd and bwd states
@@ -183,7 +188,13 @@ class Seq2Seq(nn.Module):
             prev_token = torch.full((B,), config['SOS_IDX'], dtype=torch.long, device=device)
             finished   = torch.zeros(B, dtype=torch.bool, device=device)
 
-            while not finished.all():
+            # Safety cap: if the model never emits EOS (e.g. right after random init or
+            # after a bad weight rollback) the uncapped loop would hang indefinitely.
+            # `max_decode_steps` is intentionally very large so it never limits
+            # legitimate extrapolation to long sequences — only broken models hit it.
+            max_decode_steps = config.get('max_decode_steps', 200)
+            step = 0
+            while not finished.all() and step < max_decode_steps:
                 logits, hidden, cell, alpha = self.decoder.forward_step(
                     prev_token, hidden, cell, encoder_outputs
                 )
@@ -192,6 +203,7 @@ class Seq2Seq(nn.Module):
 
                 prev_token  = logits.argmax(1)
                 finished   |= (prev_token == config['EOS_IDX'])
+                step += 1
 
             logits_seq = torch.cat(logits_list, dim=1)   # [B, L, vocab_size]
             alphas_seq = torch.cat(alphas_list, dim=1)   # [B, L, T_enc]
