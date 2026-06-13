@@ -51,6 +51,12 @@ def build_multidigit_bank(data_path='./data'):
     print("Loading EMNIST Digits...")
     emnist = datasets.EMNIST(root=data_path, split='digits', train=True, download=True)
     for img, label in emnist:
+        # EMNIST inherits the NIST SD-19 scanning orientation: digits are stored
+        # rotated 90° counter-clockwise and mirrored horizontally relative to how
+        # a human writes them.  The standard fix is to rotate 90° CW (== transpose
+        # + flip) so the digit appears upright before it enters the augmentation
+        # pipeline.  QMNIST and USPS do NOT need this correction.
+        img = img.rotate(-90).transpose(Image.FLIP_LEFT_RIGHT)
         bank[label].append(img)
 
     print("Loading QMNIST...")

@@ -1,25 +1,24 @@
 """
-Length-extrapolation evaluation for the CRNN + CTC digit-sequence-reader.
+Length-extrapolation evaluation for the Seq2Seq digit-sequence-reader.
 
-This script is the *definitive test* that the CTC model is structurally
-incapable of learning a length prior. We synthesise digit sequences of
-lengths that the model NEVER saw during training (the training distribution
-only goes up to `max_seq_len_final = 12`), and measure three metrics
-at each length:
+Mirrors src/ctc/evaluate_extrapolation.py exactly — same three metrics,
+same output format, same plot layout — so results are directly comparable.
+
+Metrics at each length L:
 
   digit_acc   -- % of individual digits decoded correctly (1 - CER).
-                 Insensitive to sequence length; stays meaningful even at L=200.
-  length_acc  -- % of sequences where the model output EXACTLY the right number
-                 of digits. A model with a length prior will collapse here for
-                 OOD lengths.
+                 Insensitive to sequence length; stays meaningful even at L=500.
+  length_acc  -- % of sequences where the model emits EXACTLY the right
+                 number of digits before EOS.  An autoregressive model with
+                 a hard-wired length prior will collapse here for OOD lengths.
   seq_acc     -- % of sequences decoded with zero errors (every digit correct).
-                 Kept for reference but de-emphasised: it degrades to 0 for long
-                 sequences even when per-digit accuracy is high.
+                 Kept for reference; naturally declines with L.
 
-A well-generalising CTC model should:
-  * Maintain high digit_acc across all lengths.
-  * Maintain high length_acc across all lengths.
-  * Show seq_acc naturally declining with L (unavoidable for very long seqs).
+Key difference from CTC:
+  The Seq2Seq decoder is AUTOREGRESSIVE — it stops when it predicts EOS,
+  so length_acc directly measures whether the model has learned a length
+  prior from training (max_seq_len_final = 12).  If it has, length_acc will
+  collapse for L > 12 even though digit_acc might stay reasonable.
 """
 
 import os
@@ -35,13 +34,52 @@ import matplotlib.gridspec as gridspec
 import numpy as np
 
 from .config import config
-from .model import CRNN_CTC, greedy_decode
-from .dataset import (
+from .model import Seq2Seq
+from .dataset_aggressive import (
     build_multidigit_bank,
     get_digit_aug_pipeline,
     make_sequence,
 )
-from .train import _levenshtein
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+def _levenshtein(a, b):
+    """Standard DP edit distance."""
+    if len(a) < len(b):
+        a, b = b, a
+    if not b:
+        return len(a)
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i] + [0] * len(b)
+        for j, cb in enumerate(b, 1):
+            cur[j] = min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb))
+        prev = cur
+    return prev[-1]
+
+
+def _greedy_decode_seq2seq(model, img_tensor, device):
+    """
+    Run one inference step and return the decoded digit list (ints 0-9).
+
+    The Seq2Seq forward pass with targets=None runs until every batch
+    element emits EOS, so we just strip SOS/EOS/PAD from the argmax.
+    """
+    with torch.no_grad():
+        logits, _ = model(img_tensor.to(device), targets=None,
+                          teacher_forcing_ratio=0.0)   # [1, L, vocab_size]
+
+    preds = logits.argmax(dim=-1)[0].cpu().tolist()   # list of token ids
+
+    digits = []
+    for p in preds:
+        if p == config['EOS_IDX']:
+            break
+        if p < 10:          # 0-9 are digit tokens
+            digits.append(p)
+    return digits
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -55,8 +93,9 @@ def evaluate_at_length(model, bank, aug, L, n_samples, device):
       length_acc : fraction of sequences where len(pred) == len(true)
       seq_acc    : fraction of sequences decoded with zero errors
 
-    Returns (digit_acc, length_acc, seq_acc, examples)
+    Returns (digit_acc, length_acc, seq_acc)
     """
+    # Temporarily force the dataset to produce sequences of exactly length L.
     saved_min = config['min_seq_len']
     saved_max = config['max_seq_len']
     config['min_seq_len'] = L
@@ -70,9 +109,12 @@ def evaluate_at_length(model, bank, aug, L, n_samples, device):
     model.eval()
     with torch.no_grad():
         for _ in range(n_samples):
-            img, true_digits = make_sequence(bank, aug, config, augment=False, epoch=1)
-            logits = model(img.unsqueeze(0).to(device))   # [1, T, V]
-            pred   = greedy_decode(logits)[0]
+            img, label_tensor = make_sequence(bank, aug, config,
+                                              augment=False, epoch=1)
+            # label_tensor = [SOS, d0, d1, …, dL-1, EOS]
+            true_digits = label_tensor[1:-1].tolist()   # strip SOS and EOS
+
+            pred = _greedy_decode_seq2seq(model, img.unsqueeze(0), device)
 
             # ── Digit accuracy (via edit distance) ───────────────────────
             ed = _levenshtein(pred, true_digits)
@@ -104,7 +146,7 @@ def evaluate_at_length(model, bank, aug, L, n_samples, device):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--checkpoint', type=str, required=True,
-                        help='Path to model checkpoint (.pt)')
+                        help='Path to Seq2Seq model checkpoint (.pt)')
     parser.add_argument('--out_dir',    type=str, default='./metrics',
                         help='Where to save the plot & JSON')
     parser.add_argument('--lengths',    type=str,
@@ -119,19 +161,9 @@ def main():
 
     # ── Load model ────────────────────────────────────────────────────────
     print(f"Loading checkpoint: {args.checkpoint}")
+    model = Seq2Seq().to(device)
     ckpt  = torch.load(args.checkpoint, map_location=device)
-
-    # Dynamically select model class based on checkpoint keys or filename
-    is_uncapped = "uncapped" in args.checkpoint.lower() or any("blocks.4" in k for k in ckpt['model_state_dict'].keys())
-    if is_uncapped:
-        print("Detected Uncapped architecture. Loading CRNN_CTC_Uncapped model...")
-        from src.CRNN_CTC_Uncapped.model import CRNN_CTC_Uncapped
-        model = CRNN_CTC_Uncapped().to(device)
-    else:
-        print("Detected baseline architecture. Loading CRNN_CTC model...")
-        model = CRNN_CTC().to(device)
-
-    model.load_state_dict(ckpt['model_state_dict'], strict=True)
+    model.load_state_dict(ckpt['model_state_dict'], strict=False)
     model.eval()
 
     # ── Build clean digit bank (no augmentation) ──────────────────────────
@@ -173,7 +205,7 @@ def main():
     fig = plt.figure(figsize=(18, 5))
     gs  = gridspec.GridSpec(1, 3, figure=fig)
     fig.suptitle(
-        f"CTC Length Extrapolation  —  {os.path.basename(args.checkpoint)}",
+        f"Seq2Seq Length Extrapolation  —  {os.path.basename(args.checkpoint)}",
         fontsize=13, y=1.02)
 
     def _vline(ax):
@@ -209,13 +241,13 @@ def main():
     _vline(ax3)
 
     plt.tight_layout()
-    plot_path = os.path.join(args.out_dir, 'ctc_length_extrapolation.png')
+    plot_path = os.path.join(args.out_dir, 'seq2seq_length_extrapolation.png')
     plt.savefig(plot_path, dpi=120, bbox_inches='tight')
     print(f"\nPlot saved  : {plot_path}")
     plt.close()
 
     # ── JSON dump ─────────────────────────────────────────────────────────
-    json_path = os.path.join(args.out_dir, 'ctc_length_extrapolation.json')
+    json_path = os.path.join(args.out_dir, 'seq2seq_length_extrapolation.json')
     with open(json_path, 'w') as f:
         json.dump({
             'checkpoint':    os.path.basename(args.checkpoint),

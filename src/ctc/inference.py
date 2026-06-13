@@ -85,9 +85,16 @@ def auto_extract_gt(image_path):
 def predict(image_path, checkpoint_path, visualize=False, ground_truth=None):
     """Run inference and return (pred_string, metrics_dict_or_None)."""
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = CRNN_CTC().to(device)
     ckpt = torch.load(checkpoint_path, map_location=device)
-    # strict=False allows loading checkpoints that pre-date a refactor
+
+    # Dynamically select model class based on checkpoint keys or filename
+    is_uncapped = "uncapped" in checkpoint_path.lower() or any("blocks.4" in k for k in ckpt['model_state_dict'].keys())
+    if is_uncapped:
+        from src.CRNN_CTC_Uncapped.model import CRNN_CTC_Uncapped
+        model = CRNN_CTC_Uncapped().to(device)
+    else:
+        model = CRNN_CTC().to(device)
+
     model.load_state_dict(ckpt['model_state_dict'], strict=False)
 
     img_tensor, orig_img = preprocess_image(image_path)
