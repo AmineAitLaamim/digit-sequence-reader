@@ -96,27 +96,29 @@ def _levenshtein(a: list, b: list) -> int:
 def compute_metrics(
     decoded: list[list[int]],
     target_lengths: torch.Tensor,
-    targets_2d: torch.Tensor,
+    targets: torch.Tensor, # Can be 1D flat or 2D padded
 ) -> tuple[float, float]:
-    """Compute sequence accuracy and character error rate.
-
-    Args:
-        decoded:        Predictions from greedy_autoregressive_decode().
-        target_lengths: [B] — digits per sample.
-        targets_2d:     [B, max_L] — 2D padded ground truth.
-
-    Returns:
-        (seq_acc, cer) — sequence accuracy and CER (not char_acc).
-    """
+    """Compute sequence accuracy and character error rate. Handles both 1D and 2D targets."""
     B = len(decoded)
     seq_correct   = 0
     edit_distance = 0
     total_chars   = 0
 
+    # Check if targets are 1D (flat CTC format) or 2D (padded Transformer format)
+    is_1d = (targets.dim() == 1)
+    cursor = 0
+
     for i, length in enumerate(target_lengths.tolist()):
         length = int(length)
-        # Use padded targets for ground truth tracking in metrics
-        gt   = targets_2d[i, :length].tolist()
+        
+        if is_1d:
+            # 1D flat tensor (from default val_loader)
+            gt = targets[cursor:cursor + length].tolist()
+            cursor += length
+        else:
+            # 2D padded tensor (from transformer_collate_fn)
+            gt = targets[i, :length].tolist()
+
         pred = decoded[i]
 
         if pred == gt:
