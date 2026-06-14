@@ -339,16 +339,8 @@ class TransformerSeq2Seq(nn.Module):
 
     @staticmethod
     def _make_causal_mask(sz: int, device: torch.device) -> torch.Tensor:
-        """Generate an upper-triangular causal (look-ahead) mask.
-
-        Returns:
-            [sz, sz] float tensor with -inf above the diagonal, 0 on/below.
-        """
-        mask = torch.triu(
-            torch.full((sz, sz), float('-inf'), device=device),
-            diagonal=1,
-        )
-        return mask
+        """Create a boolean upper-triangular mask (True = blocked)."""
+        return torch.triu(torch.ones(sz, sz, dtype=torch.bool, device=device), diagonal=1)
 
     def _build_decoder_input(
         self,

@@ -17,6 +17,7 @@ distribution** without learning a length prior.
 | **[`CTC_EXTRAPOLATION.md`](./CTC_EXTRAPOLATION.md)** | The key selling point of the model: how and why it generalises to unseen lengths. Includes the `evaluate_extrapolation.py` script and how to interpret the length-vs-accuracy plot. |
 | **[`CTC_FILE_REFERENCE.md`](./CTC_FILE_REFERENCE.md)** | File-by-file reference for every module in `src/ctc/`, with the public API of each. |
 | **[`ABLATION_UNCAPPED.md`](./ABLATION_UNCAPPED.md)** | The `CRNN_CTC_Uncapped` ablation study — the one architectural change (6 dilated blocks, RF≈252), the hypothesis it tests, expected results, and how to reproduce the experiment. |
+| **[`TRANSFORMER_BASELINE.md`](./TRANSFORMER_BASELINE.md)** | Documentation for the `TransformerSeq2Seq` baseline model, explicitly built to test and prove the failure of autoregressive decoding and absolute positional encodings on extrapolation tasks. |
 
 ---
 
@@ -44,6 +45,7 @@ make ctc-eval-extrap   # synthesises L in {1,3,5,...,50} and plots seq-acc + CER
 |----------|---------|
 | [`train_colab_ctc.ipynb`](../train_colab_ctc.ipynb) | Train the **baseline** `CRNN_CTC` model end-to-end. |
 | [`notebooks/train_colab_ctc_uncapped.ipynb`](../notebooks/train_colab_ctc_uncapped.ipynb) | Train the **ablation** `CRNN_CTC_Uncapped` model and run the length-extrapolation comparison. |
+| [`notebooks/train_colab_transformer.ipynb`](../notebooks/train_colab_transformer.ipynb) | Train the **ablation** `TransformerSeq2Seq` baseline model to demonstrate extrapolation failure. |
 
 ---
 

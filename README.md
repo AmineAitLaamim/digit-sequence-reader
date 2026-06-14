@@ -2,9 +2,10 @@
 
 A deep learning project that reads a **variable-length sequence of handwritten digits** from a single stitched image and outputs the correct string of numbers.
 
-The repository features two distinct approaches to sequence reading:
+The repository features three distinct approaches to sequence reading:
 1. **Autoregressive Sequence-to-Sequence (Seq2Seq)**: Uses a `CNN + Bidirectional LSTM` encoder, `Bahdanau Attention`, and an `LSTM Decoder` loop to output characters step-by-step.
 2. **Parallel Connectionist Temporal Classification (CTC)**: Uses a `2D CNN` encoder, a height mean collapse layer, a `1D Dilated Residual CNN` encoder, a linear classifier head, and a `CTC Loss` function. This model is non-autoregressive and excels at **generalizing to sequence lengths far beyond the training distribution** (length extrapolation).
+3. **Transformer Seq2Seq Baseline**: Uses the exact same 2D CNN encoder and data pipeline as the CTC model, but replaces the 1D dilated CNN and CTC loss with an **Absolute Positional Encoding** and a **Global Autoregressive Transformer Decoder**. This baseline was strictly designed for ablation studies to explicitly demonstrate the **length prior failure mode** (catastrophic collapse on out-of-distribution sequence lengths) inherent to absolute PE and autoregressive decoding.
 
 ---
 
@@ -108,3 +109,4 @@ When running `make ctc-infer`, the system plots a frame-by-frame prediction trac
 You can also run training on a Google Colab GPU:
 * **[Seq2Seq Notebook](train_colab.ipynb)**
 * **[CTC Notebook](train_colab_ctc.ipynb)**
+* **[Transformer Baseline Notebook](notebooks/train_colab_transformer.ipynb)**

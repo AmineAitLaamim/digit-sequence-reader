@@ -419,6 +419,17 @@ def main() -> None:
     # identical data pipeline for fair comparison.
     print('Building digit bank and validation loader...')
     digit_bank, val_loader, _ = get_dataloaders(data_path=config['data_path'])
+    
+    # ── CRITICAL FIX: Recreate val_loader with transformer_collate_fn ─────────
+    val_loader = DataLoader(
+        val_loader.dataset,
+        batch_size=args.batch_size,
+        collate_fn=transformer_collate_fn,  # <--- Ensures 2D targets for validation
+        num_workers=args.num_workers,
+        pin_memory=True,
+        persistent_workers=(args.num_workers > 0),
+    )
+    
     steps_per_epoch = args.train_size // args.batch_size
     print(f'Steps per epoch : {steps_per_epoch}')
 

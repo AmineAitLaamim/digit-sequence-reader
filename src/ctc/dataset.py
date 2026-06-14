@@ -140,9 +140,9 @@ def get_digit_aug_pipeline(augment=True, config=None, epoch=1):
                 A.MotionBlur(blur_limit=max(3, int(config.get('aug_blur_limit', 3) * intensity)))
             ], p=0.4 * intensity),
             A.CoarseDropout(
-                max_holes=8,
-                max_height=8,
-                max_width=8,
+                num_holes_range=(1, 8),
+                hole_height_range=(1, 8),
+                hole_width_range=(1, 8),
                 p=config.get('aug_erasing_p', 0.3) * intensity),
             A.Resize(64, 64),
             A.Normalize(mean=0.0, std=1.0),
