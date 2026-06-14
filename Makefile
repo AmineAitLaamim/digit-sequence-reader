@@ -5,7 +5,7 @@
 # ── Seq2Seq (old, autoregressive) ──────────────────────────────────────
 # Run inference locally with visualization
 infer:
-	python -m src.seq2seq.inference --checkpoint model/best_model.pt --image samples/test.png --visualize
+	python -m src.seq2seq.inference --checkpoint model/best_model_v4.pt --image samples/test.png --visualize
 
 # Generate local digit sequence samples
 generate:
@@ -56,7 +56,7 @@ ctc-eval-extrap:
 # Outputs go to ./model/metrics_seq2seq to keep them separate from CTC results.
 # Override checkpoint:  make seq2seq-eval-extrap CKPT=model/my_seq2seq.pt
 # Override output dir: make seq2seq-eval-extrap OUT_DIR=./model/metrics_seq2seq
-SEQ2SEQ_CKPT    = model/best_model.pt
+SEQ2SEQ_CKPT    = model/best_model_v4.pt
 SEQ2SEQ_OUT_DIR = ./model/metrics_seq2seq
 seq2seq-eval-extrap:
 	python -m src.seq2seq.evaluate_extrapolation \
